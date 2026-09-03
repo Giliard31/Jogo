@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nosso Jogo 3D - Protótipo Chefe</title>
+    <title>Nosso Jogo 3D - Passo 2</title>
     <style>
         body {
             margin: 0;
@@ -38,9 +38,11 @@
 <body>
 
     <div id="hud">
-        <h2>Projeto: Cópia Hello Neighbor</h2>
+        <h2>Projeto: Cópia Hello Neighbor (Passo 2)</h2>
         <p><strong>Controles:</strong> Clique na tela para travar o mouse.</p>
-        <p>Use <strong>W, A, S, D</strong> para andar e o <strong>Mouse</strong> para olhar.</p>
+        <p>Use <strong>W, A, S, D</strong> para andar.</p>
+        <p>Chegue perto da caixa vermelha e aperte <strong>E</strong> para pegar.</p>
+        <p>Clique com o <strong>Botão Esquerdo</strong> para arremessar.</p>
     </div>
     
     <div id="crosshair"></div>
@@ -55,41 +57,46 @@
         let velocity = new THREE.Vector3();
         let direction = new THREE.Vector3();
 
+        // Variáveis do Sistema de Interação
+        let heldObject = null;
+        let mysteryBox;
+        const raycaster = new THREE.Raycaster();
+
         init();
         animate();
 
         function init() {
-            // 1. Criando a Cena
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x1a1a1a);
             scene.fog = new THREE.FogExp2(0x1a1a1a, 0.03);
 
-            // 2. Câmera (Visão em Primeira Pessoa)
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.y = 1.6; // Altura dos olhos do personagem
+            camera.position.y = 1.6;
 
-            // 3. Renderizador Gráfico
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.shadowMap.enabled = true;
             document.body.appendChild(renderer.domElement);
 
-            // 4. Controles de Movimento de Câmera (Mouse)
             controls = new THREE.PointerLockControls(camera, document.body);
             
             document.body.addEventListener('click', () => {
-                controls.lock();
+                if (!controls.isLocked) {
+                    controls.lock();
+                } else if (heldObject) {
+                    // Arremessar objeto se estiver segurando e clicar
+                    throwObject();
+                }
             });
 
             scene.add(controls.getObject());
 
-            // 5. Captura de Teclado
             window.addEventListener('keydown', (e) => {
                 switch (e.code) {
                     case 'KeyW': case 'ArrowUp': moveForward = true; break;
                     case 'KeyA': case 'ArrowLeft': moveLeft = true; break;
                     case 'KeyS': case 'ArrowDown': moveBackward = true; break;
                     case 'KeyD': case 'ArrowRight': moveRight = true; break;
+                    case 'KeyE': togglePickUp(); break; // Tecla E para pegar/soltar
                 }
             });
 
@@ -102,7 +109,6 @@
                 }
             });
 
-            // 6. Iluminação do Ambiente
             const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
             scene.add(ambientLight);
 
@@ -110,34 +116,61 @@
             sunLight.position.set(10, 20, 10);
             scene.add(sunLight);
 
-            // 7. Construindo o Chão da Casa
             const floorGeo = new THREE.PlaneGeometry(40, 40);
             const floorMat = new THREE.MeshStandardMaterial({ color: 0x3d2817, roughness: 0.9 });
             const floor = new THREE.Mesh(floorGeo, floorMat);
             floor.rotation.x = -Math.PI / 2;
             scene.add(floor);
 
-            // 8. Construindo Paredes Provisórias
             const wallMat = new THREE.MeshStandardMaterial({ color: 0x8c6239, roughness: 0.7 });
-            
-            // Parede Fundos
             const wallBack = new THREE.Mesh(new THREE.BoxGeometry(40, 5, 1), wallMat);
             wallBack.position.set(0, 2.5, -20);
             scene.add(wallBack);
 
-            // Parede Esquerda
             const wallLeft = new THREE.Mesh(new THREE.BoxGeometry(1, 5, 40), wallMat);
             wallLeft.position.set(-20, 2.5, 0);
             scene.add(wallLeft);
 
-            // 9. Adicionando um objeto de teste (uma caixa misteriosa no meio da sala)
-            const boxGeo = new THREE.BoxGeometry(2, 2, 2);
+            // Nossa Caixa Misteriosa Interativa
+            const boxGeo = new THREE.BoxGeometry(1.5, 1.5, 1.5);
             const boxMat = new THREE.MeshStandardMaterial({ color: 0xcc0000 });
-            const mysteryBox = new THREE.Mesh(boxGeo, boxMat);
-            mysteryBox.position.set(0, 1, -5);
+            mysteryBox = new THREE.Mesh(boxGeo, boxMat);
+            mysteryBox.position.set(0, 0.75, -5);
             scene.add(mysteryBox);
 
             window.addEventListener('resize', onWindowResize);
+        }
+
+        function togglePickUp() {
+            if (heldObject) {
+                // Soltar no chão perto do jogador
+                scene.add(heldObject);
+                const cameraDirection = new THREE.Vector3();
+                camera.getWorldDirection(cameraDirection);
+                heldObject.position.copy(camera.position).add(cameraDirection.multiplyScalar(2));
+                heldObject.position.y = 0.75;
+                heldObject = null;
+            } else {
+                // Tenta pegar se estiver perto da mysteryBox
+                const distance = camera.position.distanceTo(mysteryBox.position);
+                if (distance < 4) {
+                    heldObject = mysteryBox;
+                    scene.remove(mysteryBox);
+                }
+            }
+        }
+
+        function throwObject() {
+            if (heldObject) {
+                scene.add(heldObject);
+                const cameraDirection = new THREE.Vector3();
+                camera.getWorldDirection(cameraDirection);
+                heldObject.position.copy(camera.position).add(cameraDirection.multiplyScalar(1.5));
+                
+                // Simples impulso de arremesso guardado no objeto
+                heldObject.userData.velocity = cameraDirection.multiplyScalar(15);
+                heldObject = null;
+            }
         }
 
         function onWindowResize() {
@@ -165,6 +198,20 @@
 
                 controls.moveRight(-velocity.x * delta);
                 controls.moveForward(-velocity.z * delta);
+
+                // Se estiver segurando o objeto, faz ele acompanhar a câmera (posição das mãos)
+                if (heldObject) {
+                    const handOffset = new THREE.Vector3(0.8, -0.5, -2);
+                    handOffset.applyQuaternion(camera.quaternion);
+                    heldObject.position.copy(camera.position).add(handOffset);
+                }
+            }
+
+            // Atualiza física básica de arremesso se houver impulso aplicado
+            if (mysteryBox.userData && mysteryBox.userData.velocity && heldObject !== mysteryBox) {
+                mysteryBox.position.addScaledVector(mysteryBox.userData.velocity, 0.016);
+                mysteryBox.userData.velocity.multiplyScalar(0.95); // Atrito do ar
+                if (mysteryBox.position.y < 0.75) mysteryBox.position.y = 0.75;
             }
 
             prevTime = time;
